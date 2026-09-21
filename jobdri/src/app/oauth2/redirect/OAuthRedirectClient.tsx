@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ROUTES } from "@/constants/routes";
+import { ANALYTICS_EVENTS, track } from "@/lib/analytics";
 import { getEmailFromAccessToken, saveAuthTokens } from "@/lib/auth";
 import { shouldShowDesktopRequiredPage } from "@/utils/device";
 
@@ -29,6 +30,7 @@ export default function OAuthRedirectClient() {
           getEmailFromAccessToken(accessToken) ||
           undefined,
       );
+      track(ANALYTICS_EVENTS.LOGIN_COMPLETED, { login_method: "google" });
       router.replace(
         shouldShowDesktopRequiredPage()
           ? ROUTES.DESKTOP_REQUIRED

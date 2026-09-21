@@ -33,6 +33,11 @@ import {
   sendEmailVerification,
   signupWithEmail,
 } from "@/lib/auth";
+import {
+  ANALYTICS_EVENTS,
+  resolveLoginReferrer,
+  track,
+} from "@/lib/analytics";
 import { shouldShowDesktopRequiredPage } from "@/utils/device";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -261,6 +266,7 @@ export default function EmailLoginScreen() {
   const [isResendingVerificationCode, setIsResendingVerificationCode] =
     useState(false);
   const verificationInputRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const hasTrackedPageView = useRef(false);
 
   // toched 상태
   const [emailTouched, setEmailTouched] = useState(false);
@@ -297,6 +303,25 @@ export default function EmailLoginScreen() {
   const isVerificationReady =
     !hasVerificationError && verificationCode.every(Boolean);
   const displayedVerificationEmail = email || "example@gmail.com";
+
+  useEffect(() => {
+    if (hasTrackedPageView.current) {
+      return;
+    }
+
+    hasTrackedPageView.current = true;
+    track(ANALYTICS_EVENTS.LOGIN_PAGE_VIEWED, {
+      referrer: resolveLoginReferrer(
+        new URLSearchParams(window.location.search).get("redirect"),
+      ),
+    });
+  }, []);
+
+  useEffect(() => {
+    if (authMode === "signup") {
+      track(ANALYTICS_EVENTS.SIGNUP_PAGE_VIEWED);
+    }
+  }, [authMode]);
 
   useEffect(() => {
     if (!showCreditTooltip) {
@@ -440,14 +465,23 @@ export default function EmailLoginScreen() {
   const handleLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    if (isLoginSubmitting) {
+      return;
+    }
+
+    track(ANALYTICS_EVENTS.LOGIN_SUBMITTED, { login_method: "email" });
+
     if (
-      isLoginSubmitting ||
       !isLoginReady ||
       !emailPattern.test(email) ||
       !passwordPattern.test(password)
     ) {
       setLoginError(true);
       setLoginErrorMessage(loginValidationErrorMessage);
+      track(ANALYTICS_EVENTS.LOGIN_FAILED, {
+        login_method: "email",
+        error_message: loginValidationErrorMessage,
+      });
       return;
     }
 
@@ -458,24 +492,31 @@ export default function EmailLoginScreen() {
     try {
       const tokens = await loginWithEmail({ email, password });
       saveAuthTokens(tokens, email);
+      track(ANALYTICS_EVENTS.LOGIN_COMPLETED, { login_method: "email" });
       router.push(
         shouldShowDesktopRequiredPage()
           ? ROUTES.DESKTOP_REQUIRED
           : ROUTES.HOME,
       );
     } catch (error) {
-      setLoginError(true);
-      setLoginErrorMessage(
+      const errorMessage =
         error instanceof AuthApiError
           ? error.errorDetail || error.message
-          : "로그인 중 문제가 발생했습니다.",
-      );
+          : "로그인 중 문제가 발생했습니다.";
+
+      setLoginError(true);
+      setLoginErrorMessage(errorMessage);
+      track(ANALYTICS_EVENTS.LOGIN_FAILED, {
+        login_method: "email",
+        error_message: errorMessage,
+      });
     } finally {
       setIsLoginSubmitting(false);
     }
   };
 
   const handleGoogleLogin = () => {
+    track(ANALYTICS_EVENTS.GOOGLE_LOGIN_CLICKED);
     window.location.assign(getGoogleAuthorizationUrl());
   };
 
@@ -492,6 +533,7 @@ export default function EmailLoginScreen() {
 
     setSignupErrorMessage("");
     setIsSignupSubmitting(true);
+    track(ANALYTICS_EVENTS.SIGNUP_SUBMITTED);
 
     try {
       await sendEmailVerification({ email });
@@ -500,11 +542,13 @@ export default function EmailLoginScreen() {
       setVerificationErrorMessage(defaultVerificationErrorMessage);
       setAuthMode("verify");
     } catch (error) {
-      setSignupErrorMessage(
+      const errorMessage =
         error instanceof AuthApiError
           ? error.errorDetail || error.message
-          : "인증번호 발송 중 문제가 발생했습니다.",
-      );
+          : "인증번호 발송 중 문제가 발생했습니다.";
+
+      setSignupErrorMessage(errorMessage);
+      track(ANALYTICS_EVENTS.SIGNUP_FAILED, { error_message: errorMessage });
     } finally {
       setIsSignupSubmitting(false);
     }
@@ -520,6 +564,7 @@ export default function EmailLoginScreen() {
     }
 
     setIsVerificationSubmitting(true);
+    track(ANALYTICS_EVENTS.VERIFICATION_SUBMITTED);
 
     try {
       await confirmEmailVerification({
@@ -530,18 +575,23 @@ export default function EmailLoginScreen() {
         email,
         password,
       });
+      track(ANALYTICS_EVENTS.VERIFICATION_COMPLETED);
       setAuthMode("success");
       setVerificationCode([...initialVerificationCode]);
       setHasVerificationError(false);
       setVerificationErrorMessage(defaultVerificationErrorMessage);
     } catch (error) {
-      setVerificationCode([...initialVerificationCode]);
-      setHasVerificationError(true);
-      setVerificationErrorMessage(
+      const errorMessage =
         error instanceof AuthApiError
           ? error.errorDetail || error.message
-          : defaultVerificationErrorMessage,
-      );
+          : defaultVerificationErrorMessage;
+
+      setVerificationCode([...initialVerificationCode]);
+      setHasVerificationError(true);
+      setVerificationErrorMessage(errorMessage);
+      track(ANALYTICS_EVENTS.VERIFICATION_FAILED, {
+        error_message: errorMessage,
+      });
 
       if (document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
@@ -588,6 +638,7 @@ export default function EmailLoginScreen() {
       return;
     }
 
+    track(ANALYTICS_EVENTS.VERIFICATION_RESEND_CLICKED);
     resetVerificationToInitial();
     setVerificationErrorMessage(defaultVerificationErrorMessage);
     setIsResendingVerificationCode(true);

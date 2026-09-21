@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import AnalyticsProvider from "@/components/providers/AnalyticsProvider";
 import QueryProvider from "@/components/providers/QueryProvider";
 // import LayoutShell from "./LayoutShell";
 
@@ -42,7 +43,9 @@ export default function RootLayout({
   return (
     <html lang="ko" className="h-full antialiased">
       <body className="min-h-full max-w-[1920px] bg-line-neutral-assistive">
-        <QueryProvider> {children}</QueryProvider>
+        <AnalyticsProvider>
+          <QueryProvider> {children}</QueryProvider>
+        </AnalyticsProvider>
       </body>
     </html>
   );

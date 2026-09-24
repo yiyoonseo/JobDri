@@ -37,6 +37,16 @@ import {
 } from "@/lib/api/mockApplies";
 import { useDebounce } from "@/hooks/useDebounce";
 import { normalizeJdLineBreaks } from "@/utils/jdCriteria";
+import { ANALYTICS_EVENTS, track, type JdSectionId } from "@/lib/analytics";
+
+/** 편집 필드 → 택소노미 section_id (공고명은 택소노미 대상이 아니다) */
+const JD_SECTION_ID_BY_FIELD: Record<string, JdSectionId> = {
+  "company-name": "company_name",
+  role: "position",
+  task: "duties",
+  qualification: "requirements",
+  prefer: "preferred",
+};
 
 function firstNonEmpty(...values: Array<string | null | undefined>) {
   return values.find((value) => value?.trim())?.trim() ?? "";
@@ -151,6 +161,7 @@ export default function JobPostingReviewPage() {
   const [lastSavedTime, setLastSavedTime] = useState<string>("");
 
   const isInitialRender = useRef(true);
+  const hasTrackedPageView = useRef(false);
 
   const currentPayload: JobPostingSavePayload = useMemo(
     () => ({
@@ -235,6 +246,17 @@ export default function JobPostingReviewPage() {
   const isAnyInputEditing = editingFieldIds.size > 0;
 
   const handleInputEditingChange = (fieldId: string, isEditing: boolean) => {
+    const sectionId = JD_SECTION_ID_BY_FIELD[fieldId];
+
+    if (sectionId) {
+      track(
+        isEditing
+          ? ANALYTICS_EVENTS.JD_SECTION_EDIT_CLICKED
+          : ANALYTICS_EVENTS.JD_SECTION_EDITED,
+        { section_id: sectionId },
+      );
+    }
+
     setEditingFieldIds((current) => {
       const next = new Set(current);
 
@@ -333,6 +355,11 @@ export default function JobPostingReviewPage() {
               0,
           );
           setJobPostingId(saved?.jobPostingId ?? null);
+        }
+
+        if (!hasTrackedPageView.current) {
+          hasTrackedPageView.current = true;
+          track(ANALYTICS_EVENTS.JD_REVIEW_PAGE_VIEWED, {});
         }
       } catch (error) {
         console.error("데이터 로드 실패", error);

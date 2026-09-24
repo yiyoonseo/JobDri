@@ -9,10 +9,34 @@ import { Toast } from "@/components/common/toast";
 import { INTRO_STEPS } from "@/components/mockApply/home/homeSteps";
 import clsx from "clsx";
 import {
+  ANALYTICS_EVENTS,
+  track,
+  type JdEntrySource,
+} from "@/lib/analytics";
+import {
   clearJobPostingDraft,
   getJobPostingDraft,
   saveJobPostingDraft,
 } from "../jobPostingDraftStore";
+
+/**
+ * 공고 입력 페이지 유입 경로.
+ * - retry: 공고 분석 실패/중단 후 되돌아온 경우 (URL 에 analysisError / analysisCanceled)
+ * - resume: 이전에 입력하던 공고 초안이 남아 있는 경우
+ * - new: 그 외 (홈에서 새 모의지원 시작 등)
+ */
+function resolveJdEntrySource(hasDraft: boolean): JdEntrySource {
+  const searchParams = new URLSearchParams(window.location.search);
+
+  if (
+    searchParams.has("analysisError") ||
+    searchParams.has("analysisCanceled")
+  ) {
+    return "retry";
+  }
+
+  return hasDraft ? "resume" : "new";
+}
 
 function JobPostingStepCard({ step }: { step: (typeof INTRO_STEPS)[number] }) {
   const StepImage = step.Image;
@@ -89,6 +113,19 @@ export default function JobPostingCreatePage() {
   const [toastMessages, setToastMessages] = useState<string[]>([]);
 
   const inputContainerRef = useRef<HTMLDivElement>(null);
+  const hasTrackedPageView = useRef(false);
+
+  // 아래 에러 처리 effect 가 URL 파라미터를 지우기 전에 유입 경로를 판별한다.
+  useEffect(() => {
+    if (hasTrackedPageView.current) return;
+    hasTrackedPageView.current = true;
+
+    track(ANALYTICS_EVENTS.JD_INPUT_PAGE_VIEWED, {
+      entry_source: resolveJdEntrySource(
+        initialDraft.value.trim().length > 0 || initialDraft.files.length > 0,
+      ),
+    });
+  }, [initialDraft]);
 
   useEffect(() => {
     function handleClickOutside(event: globalThis.MouseEvent) {
@@ -163,6 +200,10 @@ export default function JobPostingCreatePage() {
   };
 
   const handleSubmit = () => {
+    track(ANALYTICS_EVENTS.JD_INPUT_SUBMITTED, {
+      input_method: attachedFiles.length > 0 ? "image" : "text",
+    });
+
     saveJobPostingDraft({
       files: attachedFiles,
       value: jobPostingInputValue,

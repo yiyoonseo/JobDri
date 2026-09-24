@@ -27,6 +27,7 @@ import { fetchMockApplyJobPosting } from "@/lib/api/mockApplies";
 import type { JDData } from "@/components/mockApply/Question/SidePanel";
 import { saveJobPostingAnalysis } from "@/app/mockApply/job/jobPostingDraftStore";
 import { useDebounce } from "@/hooks/useDebounce";
+import { ANALYTICS_EVENTS, track } from "@/lib/analytics";
 
 const getSubmitPayload = (questionsData: QuestionItem[]) =>
   questionsData.map((question) => {
@@ -46,6 +47,9 @@ const getSubmitPayload = (questionsData: QuestionItem[]) =>
 
     return payload;
   });
+
+const countCompletedAnswers = (questionsData: QuestionItem[]) =>
+  questionsData.filter((question) => (question.answer || "").trim()).length;
 
 const getCurrentTime = () => {
   const now = new Date();
@@ -133,6 +137,7 @@ export default function MockApplyPage({
   const questionSaveRevisionRef = useRef(0);
   const isQuestionStructureSavingRef = useRef(false);
   const retryToastShownForRef = useRef<string | null>(null);
+  const pageViewTrackedForRef = useRef<string | null>(null);
 
   const replaceQuestions = useCallback((nextQuestions: QuestionItem[]) => {
     questionsRef.current = nextQuestions;
@@ -326,6 +331,14 @@ export default function MockApplyPage({
         replaceQuestions(data);
         setSelectedId(data[0]?.id ?? null);
 
+        if (pageViewTrackedForRef.current !== mockApplyId) {
+          pageViewTrackedForRef.current = mockApplyId;
+          track(ANALYTICS_EVENTS.WRITE_PAGE_VIEWED, {
+            mock_apply_id: parsedMockApplyId,
+            question_count: data.length,
+          });
+        }
+
         if (data.length === 0) {
           setQuestionsErrorMessage(
             "등록된 문항이 없습니다. 문항 추가 버튼을 눌러 작성해주세요.",
@@ -444,6 +457,11 @@ export default function MockApplyPage({
 
       await saveApply(Number(mockApplyId), getSubmitPayload(questionsSnapshot));
 
+      track(ANALYTICS_EVENTS.ANSWER_AUTO_SAVED, {
+        mock_apply_id: Number(mockApplyId),
+        completed_count: countCompletedAnswers(questionsSnapshot),
+      });
+
       if (revision === questionSaveRevisionRef.current) {
         setLastSavedTime(getCurrentTime());
       }
@@ -504,6 +522,15 @@ export default function MockApplyPage({
         }
       }
 
+      // 분석 요청이 수락된 시점(크레딧 차감)을 최종 확정으로 본다.
+      track(ANALYTICS_EVENTS.APPLY_CONFIRMED, {
+        mock_apply_id: Number(mockApplyId),
+        job_posting_id:
+          resolvedJobPostingId && resolvedJobPostingId > 0
+            ? resolvedJobPostingId
+            : undefined,
+      });
+
       const resultSearchParams = new URLSearchParams();
       if (resolvedJobPostingId && resolvedJobPostingId > 0)
         resultSearchParams.set("jobPostingId", String(resolvedJobPostingId));
@@ -540,6 +567,9 @@ export default function MockApplyPage({
     } catch (error) {
       setIsSubmitting(false);
       if (error instanceof CreditInsufficientError) {
+        track(ANALYTICS_EVENTS.CREDIT_INSUFFICIENT_SHOWN, {
+          mock_apply_id: Number(mockApplyId),
+        });
         setIsCreditShortModalOpen(true);
         return;
       }
@@ -668,6 +698,11 @@ export default function MockApplyPage({
 
       setQuestionsErrorMessage("");
 
+      track(ANALYTICS_EVENTS.CUSTOM_QUESTION_ADDED, {
+        mock_apply_id: Number(mockApplyId),
+        selected_count: savedQuestions.length,
+      });
+
       const lastQuestion = savedQuestions[savedQuestions.length - 1];
       if (lastQuestion) setSelectedId(lastQuestion.id);
     } catch (error) {
@@ -692,6 +727,25 @@ export default function MockApplyPage({
     !mappedQuestionForForm ||
     questions.some((question) => !(question.answer || "").trim());
 
+  const handleSelectQuestion = (id: string) => {
+    if (id !== selectedId) {
+      track(ANALYTICS_EVENTS.ANSWER_TAB_SWITCHED, {
+        mock_apply_id: Number(mockApplyId),
+        question_index: questions.findIndex((question) => question.id === id),
+      });
+    }
+
+    setSelectedId(id);
+  };
+
+  const handleSubmitClick = () => {
+    track(ANALYTICS_EVENTS.APPLY_SUBMIT_CLICKED, {
+      mock_apply_id: Number(mockApplyId),
+      all_complete: countCompletedAnswers(questions) === questions.length,
+    });
+    setIsConfirmModalOpen(true);
+  };
+
   return (
     <MockApplyTemplate
       mockApplyId={Number(mockApplyId)}
@@ -700,7 +754,7 @@ export default function MockApplyPage({
       jobTitle={jdData?.title ?? ""}
       lastSavedAt={lastSavedTime}
       onBackClick={() => setIsLeaveModalOpen(true)}
-      onNextClick={() => setIsConfirmModalOpen(true)}
+      onNextClick={handleSubmitClick}
       isNextDisabled={isSubmitDisabled || isSubmitting}
       nextLabel="채점하기"
       nextIconType="SPARKLE"
@@ -724,7 +778,7 @@ export default function MockApplyPage({
                 <QuestionList
                   questions={questions}
                   selectedId={selectedId}
-                  onSelect={(id) => setSelectedId(id)}
+                  onSelect={handleSelectQuestion}
                   onDelete={handleDeleteQuestion}
                   onAdd={handleAddQuestion}
                 />
@@ -840,7 +894,12 @@ export default function MockApplyPage({
               }}
               primaryAction={{
                 label: "충전하기",
-                onClick: () => router.push("/credit"),
+                onClick: () => {
+                  track(ANALYTICS_EVENTS.CREDIT_CHARGE_FROM_MODAL_CLICKED, {
+                    mock_apply_id: Number(mockApplyId),
+                  });
+                  router.push("/credit");
+                },
               }}
             />
           </div>

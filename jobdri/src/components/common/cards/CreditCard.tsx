@@ -8,6 +8,7 @@ import { ModalCard } from "../modal/ModalCard";
 import { ModalOverlay } from "../modal/ModalOverlay";
 import type { PlanCode } from "@/lib/api/credit";
 import { preparePurchase } from "@/lib/api/credit";
+import { savePendingPurchase } from "@/lib/analytics";
 import { Toast } from "../toast";
 
 interface CreditCardProps extends HTMLAttributes<HTMLElement> {
@@ -56,6 +57,13 @@ export default function CreditCard({
     try {
       // 결제 준비
       const paymentData = await preparePurchase(planCode);
+
+      // 결제 완료 후 credit_purchase_completed 에 붙일 상품 정보
+      savePendingPurchase({
+        plan_code: planCode,
+        credit_amount: paymentData.creditAmount,
+        price: paymentData.amount,
+      });
 
       // 토스페이 결제창(checkoutPage)으로 리다이렉트
       if (paymentData.checkoutPage) {

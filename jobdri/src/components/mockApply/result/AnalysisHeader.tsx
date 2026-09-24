@@ -10,14 +10,22 @@ const analysisTabs = [
 
 interface AnalysisHeaderProps {
   activeTabId: string;
+  onTabChange?: (tabId: string) => void;
 }
 
-export default function AnalysisHeader({ activeTabId }: AnalysisHeaderProps) {
+export default function AnalysisHeader({
+  activeTabId,
+  onTabChange,
+}: AnalysisHeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const handleTabChange = (tabId: string) => {
+    if (tabId !== activeTabId) {
+      onTabChange?.(tabId);
+    }
+
     const params = new URLSearchParams(searchParams?.toString());
     params.set("tab", tabId);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import ResumeAnalysisFeedback from "@/components/mockApply/result/ResumeAnalysisFeedback";
 import ResumeAnalysisDetail from "@/components/mockApply/result/ResumeAnalysisDetail";
@@ -14,6 +14,8 @@ import {
 } from "@/lib/api/mockApplies";
 import { useAnalysisResult } from "@/hooks/useAnalysisResult";
 import MockApplyTemplate from "@/components/common/MockApplyTemplate";
+import { fetchSequence, type SequenceResult } from "@/lib/api/result";
+import { ANALYTICS_EVENTS, track } from "@/lib/analytics";
 
 interface ResultPageProps {
   params: Promise<{
@@ -58,8 +60,76 @@ export default function ResultPage({ params, searchParams }: ResultPageProps) {
     isError,
   } = useAnalysisResult(parsedMockApplyId, parsedJobPostingId, parsedSequence);
 
+  /** undefined: 조회 중, null: 조회 실패 */
+  const [sequenceInfo, setSequenceInfo] = useState<
+    SequenceResult | null | undefined
+  >(undefined);
+  const pageViewTrackedForRef = useRef<string | null>(null);
+
+  const resolvedJobPostingId =
+    parsedJobPostingId ?? sequenceInfo?.jobPostingId ?? undefined;
+  const resolvedSequence =
+    (analysisData?.sequence ?? 0) > 0
+      ? analysisData?.sequence
+      : (parsedSequence ?? sequenceInfo?.sequence ?? undefined);
+
   const activeTabId = tab === "score-detail" ? "score-detail" : "ai-feedback";
-  const headerComponent = <AnalysisHeader activeTabId={activeTabId} />;
+  const headerComponent = (
+    <AnalysisHeader
+      activeTabId={activeTabId}
+      onTabChange={(tabId) =>
+        track(ANALYTICS_EVENTS.RESULT_TAB_SWITCHED, {
+          job_posting_id: resolvedJobPostingId,
+          tab_name: tabId === "score-detail" ? "score_detail" : "feedback",
+        })
+      }
+    />
+  );
+
+  useEffect(() => {
+    if (!parsedMockApplyId) {
+      return;
+    }
+
+    let ignore = false;
+
+    fetchSequence(parsedMockApplyId)
+      .then((result) => {
+        if (!ignore) setSequenceInfo(result);
+      })
+      .catch(() => {
+        if (!ignore) setSequenceInfo(null);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [parsedMockApplyId]);
+
+  // 분석 결과와 회차 정보가 모두 준비된 뒤 회차별로 한 번만 보낸다.
+  useEffect(() => {
+    if (!analysisData || sequenceInfo === undefined) {
+      return;
+    }
+
+    const viewKey = `${mockApplyId}:${resolvedSequence ?? ""}`;
+    if (pageViewTrackedForRef.current === viewKey) {
+      return;
+    }
+
+    pageViewTrackedForRef.current = viewKey;
+    track(ANALYTICS_EVENTS.RESULT_PAGE_VIEWED, {
+      job_posting_id: resolvedJobPostingId,
+      sequence: resolvedSequence,
+      total_count: sequenceInfo?.totalCount,
+    });
+  }, [
+    analysisData,
+    mockApplyId,
+    resolvedJobPostingId,
+    resolvedSequence,
+    sequenceInfo,
+  ]);
 
   useEffect(() => {
     if (!parsedMockApplyId) {
@@ -127,8 +197,19 @@ export default function ResultPage({ params, searchParams }: ResultPageProps) {
         currentStep={6}
         companyName={jobPostingHeader.companyName}
         jobTitle={jobPostingHeader.jobTitle}
-        onRetryClick={() => setIsRetryModalOpen(true)}
-        onSaveAndExitClick={() => router.push("/")}
+        onRetryClick={() => {
+          track(ANALYTICS_EVENTS.RESULT_RETRY_CLICKED, {
+            job_posting_id: resolvedJobPostingId,
+            sequence: resolvedSequence,
+          });
+          setIsRetryModalOpen(true);
+        }}
+        onSaveAndExitClick={() => {
+          track(ANALYTICS_EVENTS.RESULT_SAVE_EXIT_CLICKED, {
+            job_posting_id: resolvedJobPostingId,
+          });
+          router.push("/");
+        }}
       >
         {/* 🌟 3. 이 안쪽은 온전히 '컨텐츠(main)' 영역입니다! */}
         <div className="flex h-full flex-col overflow-hidden bg-fill-quaternary-default">
@@ -148,6 +229,13 @@ export default function ResultPage({ params, searchParams }: ResultPageProps) {
                 mockApplyId={parsedMockApplyId}
                 sequence={parsedSequence}
                 analysisData={analysisData}
+                onReviewTabChange={(tabId) =>
+                  track(ANALYTICS_EVENTS.RESULT_SUMMARY_FILTER_CHANGED, {
+                    job_posting_id: resolvedJobPostingId,
+                    filter_type:
+                      tabId === "weaknesses" ? "weakness" : "strength",
+                  })
+                }
               >
                 {headerComponent}
               </ResumeAnalysisFeedback>

@@ -1,9 +1,12 @@
 /**
- * 택소노미 이벤트 정의 (로그인 화면 / 내 모의지원 홈 화면 / 모의 지원 플로우)
+ * 택소노미 이벤트 정의
+ * (로그인 화면 / 내 모의지원 홈 화면 / 모의 지원 플로우 / 결과 확인 / 크레딧)
  *
  * 이벤트 명/속성 key 는 택소노미 문서와 1:1로 대응하며,
  * 이 파일 외부에서는 문자열 리터럴을 직접 쓰지 않는다.
  */
+
+import type { PlanCode } from "@/lib/api/credit";
 
 export const ANALYTICS_EVENTS = {
   // 로그인
@@ -53,6 +56,16 @@ export const ANALYTICS_EVENTS = {
   ANALYSIS_STARTED: "analysis_started",
   ANALYSIS_COMPLETED: "analysis_completed",
   ANALYSIS_FAILED: "analysis_failed",
+  // 결과 확인
+  RESULT_PAGE_VIEWED: "result_page_viewed",
+  RESULT_TAB_SWITCHED: "result_tab_switched",
+  RESULT_SUMMARY_FILTER_CHANGED: "result_summary_filter_changed",
+  RESULT_RETRY_CLICKED: "result_retry_clicked",
+  RESULT_SAVE_EXIT_CLICKED: "result_save_exit_clicked",
+  // 크레딧
+  CREDIT_PAGE_VIEWED: "credit_page_viewed",
+  CREDIT_PLAN_CLICKED: "credit_plan_clicked",
+  CREDIT_PURCHASE_COMPLETED: "credit_purchase_completed",
 } as const;
 
 export type AnalyticsEventName =
@@ -97,6 +110,19 @@ export type JdSectionId =
 
 /** AI 분석 실패 유형 */
 export type AnalysisErrorType = "credit_insufficient" | "unknown";
+
+/**
+ * 결과 화면 상단 탭.
+ * 택소노미는 feedback / jd 이지만 현재 화면의 탭은 'AI 피드백 / 채점 상세' 라서
+ * 실제 탭에 맞춰 score_detail 로 보낸다.
+ */
+export type ResultTabName = "feedback" | "score_detail";
+
+/** 결과 화면 총평 필터 */
+export type ResultSummaryFilter = "strength" | "weakness";
+
+/** 크레딧 상품 코드 (서버 planCode 그대로) */
+export type CreditPlanCode = PlanCode;
 
 /** 이벤트별 속성 스키마 (택소노미의 `속성 key` 컬럼) */
 export interface AnalyticsEventProperties {
@@ -220,5 +246,34 @@ export interface AnalyticsEventProperties {
   [ANALYTICS_EVENTS.ANALYSIS_FAILED]: {
     mock_apply_id: number;
     error_type: AnalysisErrorType;
+  };
+  [ANALYTICS_EVENTS.RESULT_PAGE_VIEWED]: {
+    job_posting_id?: number;
+    sequence?: number;
+    total_count?: number;
+  };
+  [ANALYTICS_EVENTS.RESULT_TAB_SWITCHED]: {
+    job_posting_id?: number;
+    tab_name: ResultTabName;
+  };
+  [ANALYTICS_EVENTS.RESULT_SUMMARY_FILTER_CHANGED]: {
+    job_posting_id?: number;
+    filter_type: ResultSummaryFilter;
+  };
+  [ANALYTICS_EVENTS.RESULT_RETRY_CLICKED]: {
+    job_posting_id?: number;
+    sequence?: number;
+  };
+  [ANALYTICS_EVENTS.RESULT_SAVE_EXIT_CLICKED]: { job_posting_id?: number };
+  [ANALYTICS_EVENTS.CREDIT_PAGE_VIEWED]: { remaining_credit: number };
+  [ANALYTICS_EVENTS.CREDIT_PLAN_CLICKED]: {
+    plan_code: CreditPlanCode;
+    credit_amount: number;
+    price: number;
+  };
+  [ANALYTICS_EVENTS.CREDIT_PURCHASE_COMPLETED]: {
+    plan_code: CreditPlanCode;
+    credit_amount: number;
+    price: number;
   };
 }

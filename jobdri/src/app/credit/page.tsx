@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { CreditCard } from "@/components/common/cards";
 import Useage from "@/components/common/credit/Useage";
@@ -17,6 +17,11 @@ import { BusinessFooter } from "@/components/common/footer";
 import { Toast } from "@/components/common/toast";
 import { useCreditStore } from "@/lib/store/useCreditStore";
 import { Button } from "@/components/common/buttons";
+import {
+  ANALYTICS_EVENTS,
+  consumePendingPurchase,
+  track,
+} from "@/lib/analytics";
 
 function calcDiscountRate(plan: CreditPlan, basePricePerUnit: number): string {
   const original = basePricePerUnit * plan.creditAmount;
@@ -35,6 +40,20 @@ function CreditContent() {
   const searchParams = useSearchParams();
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const router = useRouter();
+  const hasTrackedPageView = useRef(false);
+
+  useEffect(() => {
+    if (hasTrackedPageView.current) return;
+    hasTrackedPageView.current = true;
+
+    fetchCreditBalance()
+      .then((balance) => {
+        track(ANALYTICS_EVENTS.CREDIT_PAGE_VIEWED, {
+          remaining_credit: balance,
+        });
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (toastMessage) {
@@ -71,6 +90,11 @@ function CreditContent() {
             isPolling = false;
             window.history.replaceState(null, "", window.location.pathname);
             setIsConfirming(false);
+
+            const purchase = consumePendingPurchase();
+            if (purchase) {
+              track(ANALYTICS_EVENTS.CREDIT_PURCHASE_COMPLETED, purchase);
+            }
 
             // 서버에서 최신 잔액 조회
             fetchCreditBalance()
@@ -187,6 +211,13 @@ function CreditContent() {
             price={plan.price.toLocaleString()}
             planCode={plan.planCode}
             discountRate={calcDiscountRate(plan, basePricePerUnit)}
+            onPurchase={() =>
+              track(ANALYTICS_EVENTS.CREDIT_PLAN_CLICKED, {
+                plan_code: plan.planCode,
+                credit_amount: plan.creditAmount,
+                price: plan.price,
+              })
+            }
           />
         ))}
       </section>

@@ -20,6 +20,7 @@ interface ResumeAnalysisFeedbackProps {
   sequence?: number;
   children?: React.ReactNode;
   analysisData: AnalysisResult;
+  onReviewTabChange?: (tabId: string) => void;
 }
 
 const reviewTabs = [
@@ -150,8 +151,22 @@ function ScoreSummaryCard({ data }: { data: AnalysisResult }) {
   );
 }
 
-function ReviewSummaryCard({ data }: { data: AnalysisResult }) {
+function ReviewSummaryCard({
+  data,
+  onTabChange,
+}: {
+  data: AnalysisResult;
+  onTabChange?: (tabId: string) => void;
+}) {
   const [activeTabId, setActiveTabId] = useState(reviewTabs[0].id);
+
+  const handleTabChange = (tabId: string) => {
+    if (tabId !== activeTabId) {
+      onTabChange?.(tabId);
+    }
+
+    setActiveTabId(tabId);
+  };
   const isStrengthTab = activeTabId === "strengths";
 
   const evaluations = isStrengthTab
@@ -176,7 +191,7 @@ function ReviewSummaryCard({ data }: { data: AnalysisResult }) {
           style="STRONG"
           size="S"
           activeTabId={activeTabId}
-          onTabChange={setActiveTabId}
+          onTabChange={handleTabChange}
         />
       </div>
 
@@ -197,6 +212,7 @@ function ReviewSummaryCard({ data }: { data: AnalysisResult }) {
 export default function ResumeAnalysisFeedback({
   analysisData,
   children,
+  onReviewTabChange,
 }: ResumeAnalysisFeedbackProps) {
   const { scrollAreaRef, scrollbarMetrics, updateScrollbarMetrics } =
     useLnbScrollMetrics<HTMLElement>(true, "resume-analysis-feedback");
@@ -215,7 +231,10 @@ export default function ResumeAnalysisFeedback({
             <div className="mx-auto justify-center flex w-full max-w-[1320px] items-start gap-3 self-stretch">
               {/* 🌟 데이터 내려주기 */}
               <ScoreSummaryCard data={analysisData} />
-              <ReviewSummaryCard data={analysisData} />
+              <ReviewSummaryCard
+                data={analysisData}
+                onTabChange={onReviewTabChange}
+              />
             </div>
           </section>
         </div>

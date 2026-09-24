@@ -41,3 +41,16 @@ export const completedStepCountByStatus: Record<string, number> = {
   ANSWER_WRITE: 5,
   COMPLETED: 6,
 };
+
+/**
+ * 이어서 작성하기 카드의 현재 단계 라벨 (분석 이벤트의 `status` 속성값).
+ * ResultDraftStep 의 STEP_LABELS 와 동일한 문구를 평문으로 유지한다.
+ */
+export const DRAFT_STATUS_BY_STEP: Record<number, string> = {
+  1: "공고 확인",
+  2: "자소서 작성",
+  3: "채점 중",
+};
+
+/** 이어서 작성하기 진행 단계 총 개수 (진행률 표기에 사용) */
+export const DRAFT_TOTAL_STEPS = 3;

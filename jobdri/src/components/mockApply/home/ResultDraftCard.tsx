@@ -4,6 +4,7 @@ import { DraftData } from "./types";
 import Icon from "@/components/common/icons/Icon";
 import Avatar from "./Avatar";
 import { DropDownMenu } from "@/components/common/dropdown";
+import { ANALYTICS_EVENTS, track } from "@/lib/analytics";
 import clsx from "clsx";
 
 interface ResultDraftCardProps {
@@ -36,6 +37,15 @@ export const ResultDraftCard: React.FC<ResultDraftCardProps> = ({
 
   const handleKababClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+
+    // 토글이므로 메뉴가 열리는 클릭만 집계한다.
+    if (!isMenuOpen) {
+      track(ANALYTICS_EVENTS.PAUSED_KEBAB_CLICKED, {
+        mock_apply_id: data.mockApplyId,
+        company: data.companyName,
+      });
+    }
+
     setIsMenuOpen((prev) => !prev);
   };
 

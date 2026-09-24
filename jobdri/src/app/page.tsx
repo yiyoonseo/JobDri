@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/common/buttons";
 import { BusinessFooter } from "@/components/common/footer";
@@ -25,6 +25,11 @@ import type {
 } from "@/components/mockApply/home/types";
 import { useReApply } from "@/hooks/useReApply";
 import { mapMockApplyToApplication } from "@/components/mockApply/home/applicationHomeUtils";
+import {
+  DRAFT_STATUS_BY_STEP,
+  DRAFT_TOTAL_STEPS,
+} from "@/components/mockApply/home/homeSteps";
+import { ANALYTICS_EVENTS, resolveBadgeType, track } from "@/lib/analytics";
 import { Toast, ToastVariant } from "@/components/common/toast";
 
 // 🌟 필요한 API 함수들 import
@@ -45,6 +50,8 @@ export default function Home() {
     message: "",
     variant: "normal",
   });
+
+  const hasTrackedHomeView = useRef(false);
 
   const showToast = (message: string, variant: ToastVariant) => {
     setToast({ show: true, message, variant });
@@ -167,6 +174,14 @@ export default function Home() {
 
       setDrafts(sortedDrafts);
       setResults(mappedResults);
+
+      if (!hasTrackedHomeView.current) {
+        hasTrackedHomeView.current = true;
+        track(ANALYTICS_EVENTS.HOME_PAGE_VIEWED, {
+          paused_count: sortedDrafts.length,
+          completed_count: mappedResults.length,
+        });
+      }
     } catch (error) {
       console.error("데이터를 불러오는데 실패했습니다.", error);
     }
@@ -305,6 +320,7 @@ export default function Home() {
               size="large"
               iconType="SPARKLE"
               onClick={() => {
+                track(ANALYTICS_EVENTS.NEW_APPLY_CLICKED);
                 saveSelectedApplyType("MOCK");
                 router.push("/mockApply/job/create");
               }}
@@ -321,6 +337,16 @@ export default function Home() {
                 );
 
                 if (!targetDraft) return;
+
+                track(ANALYTICS_EVENTS.PAUSED_APPLY_RESUMED, {
+                  mock_apply_id: targetDraft.mockApplyId,
+                  company: targetDraft.companyName,
+                  position: targetDraft.position,
+                  status:
+                    DRAFT_STATUS_BY_STEP[targetDraft.currentStep] ??
+                    "알 수 없음",
+                  progress: `${targetDraft.currentStep}/${DRAFT_TOTAL_STEPS}`,
+                });
 
                 if (!targetDraft.mockApplyId) {
                   void fetchMyJobPosting(targetDraft.jobPostingId)
@@ -369,6 +395,12 @@ export default function Home() {
 
                 if (!targetDraft) return;
 
+                track(ANALYTICS_EVENTS.APPLY_DELETE_CONFIRMED, {
+                  mock_apply_id: targetDraft.mockApplyId,
+                  company: targetDraft.companyName,
+                  section: "paused",
+                });
+
                 if (typeof targetDraft.mockApplyId === "number") {
                   void deleteApplication(targetDraft.mockApplyId);
                 } else {
@@ -381,9 +413,31 @@ export default function Home() {
             <ResultApplicationList
               applications={results}
               isRetrying={isRetrying}
-              onDelete={(app) => void deleteApplication(app.mockApplyId)}
-              onRetry={(app) => void reApply(app.mockApplyId)}
+              onDelete={(app) => {
+                track(ANALYTICS_EVENTS.APPLY_DELETE_CONFIRMED, {
+                  mock_apply_id: app.mockApplyId,
+                  company: app.company,
+                  section: "completed",
+                });
+                void deleteApplication(app.mockApplyId);
+              }}
+              onRetry={(app) => {
+                track(ANALYTICS_EVENTS.APPLY_RETRY_CLICKED, {
+                  mock_apply_id: app.mockApplyId,
+                  company: app.company,
+                  score: app.score,
+                });
+                void reApply(app.mockApplyId);
+              }}
               onResume={(app) => {
+                track(ANALYTICS_EVENTS.RESULT_APPLY_VIEWED, {
+                  mock_apply_id: app.mockApplyId,
+                  company: app.company,
+                  position: app.position,
+                  score: app.score,
+                  badge_type: resolveBadgeType(app.score),
+                  analysis_date: app.createdAt,
+                });
                 router.push(
                   `/mockApply/${app.mockApplyId}/result?jobPostingId=${app.jobPostingId}`,
                 );
